@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: '四级词汇大师',
   webDir: 'dist',
   server: {
-    androidScheme: 'http',
+    url: 'https://cet4.35-212-219-217.sslip.io',
     cleartext: true,
   },
   android: {
