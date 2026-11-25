@@ -40,6 +40,7 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
     () => (localStorage.getItem('cet4_study_scope') as ScopeType) || 'all'
   );
   const [revealed, setRevealed] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'known' | 'fuzzy' | 'forgot' | null>(null);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [spellInput, setSpellInput] = useState('');
   const [spellChecked, setSpellChecked] = useState<'correct' | 'wrong' | null>(null);
@@ -59,6 +60,7 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
         setStudiedToday(res.studied_today);
         setIndex(0);
         setRevealed(false);
+        setPendingAction(null);
         setSelectedOption(null);
         setSpellInput('');
         setSpellChecked(null);
@@ -102,6 +104,7 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
     const prevWasFlash = mode === 'flash';
     setMode(nextMode);
     setRevealed(false);
+    setPendingAction(null);
     setSelectedOption(null);
     setSpellInput('');
     setSpellChecked(null);
@@ -110,8 +113,8 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
     }
   };
 
-  // Optimistic UI: advance to next word immediately (0ms delay), sync to server in background
-  const handleAction = (action: 'known' | 'fuzzy' | 'forgot') => {
+  // Commit review and advance to next word immediately (0ms delay)
+  const commitAndNext = (action: 'known' | 'fuzzy' | 'forgot') => {
     if (!currentWord) return;
     const targetWord = currentWord;
     const submitMode = mode === 'flash' ? 'card' : mode;
@@ -119,6 +122,7 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
     setStudiedToday((n) => n + 1);
     setIndex((i) => i + 1);
     setRevealed(false);
+    setPendingAction(null);
     setSelectedOption(null);
     setSpellInput('');
     setSpellChecked(null);
@@ -139,6 +143,17 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
       .catch(() => {
         api.submitReview(targetWord.id, action, submitMode).then(() => onMutated?.()).catch(() => {});
       });
+  };
+
+  // In card mode before reveal: clicking known/fuzzy/forgot reveals meaning first for user confirmation
+  const handleAction = (action: 'known' | 'fuzzy' | 'forgot') => {
+    if (!currentWord) return;
+    if (mode === 'card' && !revealed) {
+      setPendingAction(action);
+      setRevealed(true);
+      return;
+    }
+    commitAndNext(action);
   };
 
   const handleQuizSelect = (opt: string) => {
@@ -178,10 +193,10 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
     setIsDragging(false);
     if (dragX <= -70) {
       setDragX(0);
-      handleAction('known');
+      commitAndNext(pendingAction || 'known');
     } else if (dragX >= 70) {
       setDragX(0);
-      handleAction('forgot');
+      commitAndNext('forgot');
     } else {
       setDragX(0);
     }
@@ -541,18 +556,35 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
         <div className="grid grid-cols-2 gap-3">
           <button
             type="button"
-            onClick={() => handleAction('forgot')}
+            onClick={() => commitAndNext('forgot')}
             className="py-4 rounded-2xl bg-rose-50 text-rose-700 border border-rose-200 font-semibold text-sm active:scale-[0.98] transition"
           >
             不熟 / 加错题
           </button>
           <button
             type="button"
-            onClick={() => handleAction('known')}
+            onClick={() => commitAndNext('known')}
             className="py-4 rounded-2xl bg-indigo-600 text-white font-semibold text-sm shadow-md shadow-indigo-200 active:scale-[0.98] transition flex items-center justify-center gap-1.5"
           >
             <Zap className="w-4 h-4" />
             认识 / 下一个
+          </button>
+        </div>
+      ) : mode === 'card' && revealed && pendingAction ? (
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => commitAndNext('forgot')}
+            className="py-3.5 rounded-2xl bg-rose-50 text-rose-700 border border-rose-200 font-semibold text-sm active:scale-[0.98] transition"
+          >
+            记错了 · 加错题
+          </button>
+          <button
+            type="button"
+            onClick={() => commitAndNext(pendingAction)}
+            className="py-3.5 rounded-2xl bg-emerald-600 text-white font-semibold text-sm shadow-md shadow-emerald-200 active:scale-[0.98] transition"
+          >
+            {pendingAction === 'known' ? '确认正确 · 下一词 →' : '下一词 →'}
           </button>
         </div>
       ) : (
