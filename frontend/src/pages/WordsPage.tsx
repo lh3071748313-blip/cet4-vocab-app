@@ -40,7 +40,7 @@ export const WordsPage: React.FC = () => {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-slate-900">四级核心词库</h2>
+        <h2 className="text-lg font-bold text-slate-900">核心词库</h2>
         <span className="text-xs text-slate-500">共 {total} 词</span>
       </div>
 

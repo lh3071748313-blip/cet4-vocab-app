@@ -82,9 +82,9 @@ export function App() {
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-xs">
-              CET4
+              CET
             </div>
-            <span className="font-bold text-slate-900 text-base">四级词汇大师</span>
+            <span className="font-bold text-slate-900 text-base">词跃 CET</span>
           </div>
           <span className="text-xs text-slate-500">Hi, {user.username}</span>
         </div>

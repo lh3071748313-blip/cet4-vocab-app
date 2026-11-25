@@ -60,10 +60,10 @@ export const AuthPage: React.FC<Props> = ({ onSuccess }) => {
             <BookOpen className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-900">四级词汇大师</h1>
+            <h1 className="text-xl font-bold text-slate-900">词跃 CET</h1>
             <p className="text-xs text-slate-500 flex items-center gap-1">
               <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              艾宾浩斯记忆曲线 · 错题强化
+              四六级记忆曲线 · 错题强化
             </p>
           </div>
         </div>
