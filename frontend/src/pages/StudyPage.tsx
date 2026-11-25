@@ -6,6 +6,7 @@ import {
   HelpCircle,
   Keyboard,
   Layers,
+  Maximize2,
   RefreshCw,
   Shuffle,
   Sparkles,
@@ -14,6 +15,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { api } from '../api/client';
+import { ImmersiveStudy } from '../components/ImmersiveStudy';
 import type { WordItem } from '../types';
 import { speakEnglish } from '../utils/tts';
 
@@ -40,6 +42,7 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
     () => (localStorage.getItem('cet4_study_scope') as ScopeType) || 'all'
   );
   const [revealed, setRevealed] = useState(false);
+  const [immersive, setImmersive] = useState(false);
   const [pendingAction, setPendingAction] = useState<'known' | 'fuzzy' | 'forgot' | null>(null);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [spellInput, setSpellInput] = useState('');
@@ -267,6 +270,14 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
             )}
           </div>
           <span className="text-slate-500">今日已学 {studiedToday} 词</span>
+          <button
+            type="button"
+            onClick={() => setImmersive(true)}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-900 text-white text-[11px] font-medium hover:bg-indigo-600 active:scale-95 transition"
+          >
+            <Maximize2 className="w-3 h-3" />
+            沉浸刷词
+          </button>
         </div>
 
         <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
@@ -622,6 +633,20 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
           ? '提示：左滑认识看释义 · 右滑不熟看释义'
           : '提示：左滑确认下一词 · 右滑记错加错题'}
       </p>
+
+      {immersive && (
+        <ImmersiveStudy
+          queue={queue}
+          index={index}
+          order={order}
+          scope={scope}
+          onToggleOrder={() => handleToggleOrder(order === 'sequential' ? 'random' : 'sequential')}
+          onToggleScope={() => handleToggleScope(scope === 'all' ? 'core' : 'all')}
+          onCommit={commitAndNext}
+          onClose={() => setImmersive(false)}
+          onReload={() => loadQueue(order, scope, mode)}
+        />
+      )}
     </div>
   );
 };
