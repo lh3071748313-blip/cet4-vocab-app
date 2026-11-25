@@ -44,9 +44,9 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [spellInput, setSpellInput] = useState('');
   const [spellChecked, setSpellChecked] = useState<'correct' | 'wrong' | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
   const [dragX, setDragX] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
   const loadQueue = useCallback(
@@ -82,11 +82,6 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
       speakEnglish(currentWord.word);
     }
   }, [currentWord?.id, mode]);
-
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 1500);
-  };
 
   const handleToggleOrder = (next: OrderType) => {
     if (next === order) return;
@@ -126,14 +121,6 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
     setSelectedOption(null);
     setSpellInput('');
     setSpellChecked(null);
-
-    if (action === 'known') {
-      showToast('已标记认识');
-    } else if (action === 'fuzzy') {
-      showToast('已标记模糊，明天巩固');
-    } else {
-      showToast('已加入错题本');
-    }
 
     api
       .submitReview(targetWord.id, action, submitMode)
@@ -192,11 +179,21 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
     touchStartRef.current = null;
     setIsDragging(false);
     if (dragX <= -70) {
-      setDragX(0);
-      commitAndNext(pendingAction || 'known');
+      setIsLeaving(true);
+      setDragX(-360);
+      setTimeout(() => {
+        setIsLeaving(false);
+        setDragX(0);
+        commitAndNext(pendingAction || 'known');
+      }, 150);
     } else if (dragX >= 70) {
-      setDragX(0);
-      commitAndNext('forgot');
+      setIsLeaving(true);
+      setDragX(360);
+      setTimeout(() => {
+        setIsLeaving(false);
+        setDragX(0);
+        commitAndNext('forgot');
+      }, 150);
     } else {
       setDragX(0);
     }
@@ -340,23 +337,19 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
         </div>
       </div>
 
-      {toast && (
-        <div className="bg-slate-900 text-white text-xs text-center py-2 px-4 rounded-xl shadow-lg">
-          {toast}
-        </div>
-      )}
-
       <div
+        key={currentWord.id}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         style={{
-          transform: `translateX(${dragX}px) rotate(${dragX * 0.03}deg)`,
-          opacity: Math.max(0.55, 1 - Math.abs(dragX) / 280),
+          transform: `translate3d(${dragX}px, 0, 0) rotate(${dragX * 0.035}deg)`,
+          opacity: isLeaving ? 0 : Math.max(0.55, 1 - Math.abs(dragX) / 300),
+          transition: isDragging
+            ? 'none'
+            : 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease-out',
         }}
-        className={`relative bg-white rounded-3xl p-6 shadow-sm border border-slate-100 space-y-5 touch-pan-y select-none ${
-          isDragging ? '' : 'transition-all duration-200'
-        }`}
+        className="relative bg-white rounded-3xl p-6 shadow-sm border border-slate-100 space-y-5 touch-pan-y select-none will-change-transform"
       >
         {dragX <= -24 && (
           <div className="absolute top-4 right-4 z-10 px-3 py-1 rounded-full bg-emerald-500 text-white text-xs font-bold shadow">
