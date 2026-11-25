@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">四级词汇大师</string>
+    <string name="title_activity_main">四级词汇大师</string>
+    <string name="package_name">com.cet4vocab.app</string>
+    <string name="custom_url_scheme">com.cet4vocab.app</string>
+</resources>

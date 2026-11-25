@@ -1,0 +1,16 @@
+services:
+  cet4-app:
+    build: .
+    container_name: cet4-vocab-app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # 建议上线前修改为随机长字符串
+      - CET4_SECRET_KEY=please-change-this-to-a-random-secret-key
+      - CET4_DB_PATH=/app/data/cet4.db
+    volumes:
+      - cet4_data:/app/data
+
+volumes:
+  cet4_data:

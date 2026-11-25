@@ -1,0 +1,9 @@
+{
+  "name": "四级词汇大师 CET-4",
+  "short_name": "CET-4背词",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#4f46e5",
+  "description": "支持记忆曲线复习、错题本与学习统计的英语四级学习软件"
+}
