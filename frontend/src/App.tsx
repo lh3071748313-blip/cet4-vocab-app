@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { BarChart3, BookOpen, BookX, Library } from 'lucide-react';
 import { api, getToken, setToken } from './api/client';
 import { AuthPage } from './pages/AuthPage';
@@ -9,23 +9,45 @@ import { WordsPage } from './pages/WordsPage';
 import type { User } from './types';
 
 type Tab = 'study' | 'mistakes' | 'words' | 'stats';
+const USER_CACHE_KEY = 'cet4_user_cache';
 
 export function App() {
-  const [user, setUser] = useState<User | null>(null);
-  const [checking, setChecking] = useState(true);
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const raw = localStorage.getItem(USER_CACHE_KEY);
+      return raw ? (JSON.parse(raw) as User) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [checking, setChecking] = useState(() => Boolean(getToken()) && !localStorage.getItem(USER_CACHE_KEY));
   const [tab, setTab] = useState<Tab>('study');
+  const [syncVersion, setSyncVersion] = useState(0);
 
   useEffect(() => {
     const token = getToken();
     if (!token) {
+      setUser(null);
+      localStorage.removeItem(USER_CACHE_KEY);
       setChecking(false);
       return;
     }
     api
       .me()
-      .then((res) => setUser(res.user))
-      .catch(() => setToken(null))
+      .then((res) => {
+        setUser(res.user);
+        localStorage.setItem(USER_CACHE_KEY, JSON.stringify(res.user));
+      })
+      .catch(() => {
+        setToken(null);
+        localStorage.removeItem(USER_CACHE_KEY);
+        setUser(null);
+      })
       .finally(() => setChecking(false));
+  }, []);
+
+  const handleStudyMutated = useCallback(() => {
+    setSyncVersion((v) => v + 1);
   }, []);
 
   if (checking) {
@@ -37,7 +59,14 @@ export function App() {
   }
 
   if (!user) {
-    return <AuthPage onSuccess={(u) => setUser(u)} />;
+    return (
+      <AuthPage
+        onSuccess={(u) => {
+          localStorage.setItem(USER_CACHE_KEY, JSON.stringify(u));
+          setUser(u);
+        }}
+      />
+    );
   }
 
   const tabs: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
@@ -62,19 +91,31 @@ export function App() {
       </header>
 
       <main className="max-w-lg mx-auto px-4 pt-4">
-        {tab === 'study' && <StudyPage dailyGoal={user.daily_goal} />}
-        {tab === 'mistakes' && <MistakesPage />}
-        {tab === 'words' && <WordsPage />}
-        {tab === 'stats' && (
+        <div className={tab === 'study' ? 'block' : 'hidden'}>
+          <StudyPage dailyGoal={user.daily_goal} onMutated={handleStudyMutated} />
+        </div>
+        <div className={tab === 'mistakes' ? 'block' : 'hidden'}>
+          <MistakesPage syncVersion={syncVersion} active={tab === 'mistakes'} />
+        </div>
+        <div className={tab === 'words' ? 'block' : 'hidden'}>
+          <WordsPage />
+        </div>
+        <div className={tab === 'stats' ? 'block' : 'hidden'}>
           <StatsPage
             user={user}
-            onUserUpdate={setUser}
+            syncVersion={syncVersion}
+            active={tab === 'stats'}
+            onUserUpdate={(u) => {
+              localStorage.setItem(USER_CACHE_KEY, JSON.stringify(u));
+              setUser(u);
+            }}
             onLogout={() => {
               setToken(null);
+              localStorage.removeItem(USER_CACHE_KEY);
               setUser(null);
             }}
           />
-        )}
+        </div>
       </main>
 
       <nav className="fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur border-t border-slate-200 safe-bottom">

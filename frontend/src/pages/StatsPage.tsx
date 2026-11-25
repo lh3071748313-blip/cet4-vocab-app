@@ -5,18 +5,20 @@ import type { StatsOverview, User } from '../types';
 
 interface Props {
   user: User;
+  syncVersion?: number;
+  active?: boolean;
   onUserUpdate: (u: User) => void;
   onLogout: () => void;
 }
 
-export const StatsPage: React.FC<Props> = ({ user, onUserUpdate, onLogout }) => {
+export const StatsPage: React.FC<Props> = ({ user, syncVersion = 0, active = true, onUserUpdate, onLogout }) => {
   const [stats, setStats] = useState<StatsOverview | null>(null);
   const [goalInput, setGoalInput] = useState(user.daily_goal);
   const [savingGoal, setSavingGoal] = useState(false);
 
   useEffect(() => {
     api.getStatsOverview().then(setStats).catch(() => {});
-  }, []);
+  }, [syncVersion, active]);
 
   const handleSaveGoal = async () => {
     setSavingGoal(true);

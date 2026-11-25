@@ -4,15 +4,20 @@ import { api } from '../api/client';
 import type { WordItem } from '../types';
 import { speakEnglish } from '../utils/tts';
 
-export const MistakesPage: React.FC = () => {
+interface Props {
+  syncVersion?: number;
+  active?: boolean;
+}
+
+export const MistakesPage: React.FC<Props> = ({ syncVersion = 0, active = true }) => {
   const [items, setItems] = useState<WordItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [reviewing, setReviewing] = useState(false);
   const [reviewIdx, setReviewIdx] = useState(0);
   const [revealed, setRevealed] = useState(false);
 
-  const loadMistakes = useCallback(async () => {
-    setLoading(true);
+  const loadMistakes = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const res = await api.listMistakes();
       setItems(res.items);
@@ -22,8 +27,8 @@ export const MistakesPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    loadMistakes();
-  }, [loadMistakes]);
+    loadMistakes(items.length > 0);
+  }, [loadMistakes, syncVersion, active]);
 
   const handleResolve = async (wordId: number) => {
     await api.resolveMistake(wordId);

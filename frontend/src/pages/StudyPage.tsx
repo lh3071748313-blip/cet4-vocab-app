@@ -19,9 +19,10 @@ type StudyMode = 'card' | 'quiz' | 'spell';
 
 interface Props {
   dailyGoal: number;
+  onMutated?: () => void;
 }
 
-export const StudyPage: React.FC<Props> = ({ dailyGoal }) => {
+export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
   const [queue, setQueue] = useState<WordItem[]>([]);
   const [index, setIndex] = useState(0);
   const [dueCount, setDueCount] = useState(0);
@@ -32,11 +33,10 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal }) => {
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [spellInput, setSpellInput] = useState('');
   const [spellChecked, setSpellChecked] = useState<'correct' | 'wrong' | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const loadQueue = useCallback(async () => {
-    setLoading(true);
+    setLoading((prev) => (queue.length === 0 ? true : prev));
     try {
       const res = await api.getTodayQueue(dailyGoal);
       setQueue(res.queue);
@@ -66,30 +66,39 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal }) => {
 
   const showToast = (msg: string) => {
     setToast(msg);
-    setTimeout(() => setToast(null), 2000);
+    setTimeout(() => setToast(null), 1600);
   };
 
-  const handleAction = async (action: 'known' | 'fuzzy' | 'forgot') => {
-    if (!currentWord || submitting) return;
-    setSubmitting(true);
-    try {
-      const res = await api.submitReview(currentWord.id, action, mode);
-      setStudiedToday((n) => n + 1);
-      if (action === 'known') {
-        showToast(`已掌握！${res.interval_days} 天后再次复习`);
-      } else if (action === 'fuzzy') {
-        showToast('已标记模糊，明天继续巩固');
-      } else {
-        showToast('已加入错题本，10分钟后可再次复习');
-      }
-      setIndex((i) => i + 1);
-      setRevealed(false);
-      setSelectedOption(null);
-      setSpellInput('');
-      setSpellChecked(null);
-    } finally {
-      setSubmitting(false);
+  // Optimistic UI: advance to next word immediately (0ms delay), sync to server in background
+  const handleAction = (action: 'known' | 'fuzzy' | 'forgot') => {
+    if (!currentWord) return;
+    const targetWord = currentWord;
+    const currentMode = mode;
+
+    setStudiedToday((n) => n + 1);
+    setIndex((i) => i + 1);
+    setRevealed(false);
+    setSelectedOption(null);
+    setSpellInput('');
+    setSpellChecked(null);
+
+    if (action === 'known') {
+      showToast('已标记认识');
+    } else if (action === 'fuzzy') {
+      showToast('已标记模糊，明天巩固');
+    } else {
+      showToast('已加入错题本');
     }
+
+    api
+      .submitReview(targetWord.id, action, currentMode)
+      .then(() => {
+        onMutated?.();
+      })
+      .catch(() => {
+        // Retry once silently on transient network hiccup
+        api.submitReview(targetWord.id, action, currentMode).then(() => onMutated?.()).catch(() => {});
+      });
   };
 
   const handleQuizSelect = (opt: string) => {
@@ -107,7 +116,7 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal }) => {
     speakEnglish(currentWord.word);
   };
 
-  if (loading) {
+  if (loading && queue.length === 0) {
     return (
       <div className="py-20 text-center text-slate-400 text-sm">正在生成今日艾宾浩斯复习队列...</div>
     );
@@ -139,7 +148,6 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal }) => {
 
   return (
     <div className="space-y-4">
-      {/* Top progress & mode switcher */}
       <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 space-y-3">
         <div className="flex items-center justify-between text-xs">
           <div className="flex items-center gap-2">
@@ -198,7 +206,6 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal }) => {
         </div>
       )}
 
-      {/* Main Study Card */}
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 space-y-5">
         <div className="flex items-start justify-between">
           <div>
@@ -230,7 +237,9 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal }) => {
                 <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">
                   {currentWord.word}
                 </h2>
-                <p className="text-sm text-slate-400 font-mono mt-1">{currentWord.phonetic}</p>
+                {currentWord.phonetic && (
+                  <p className="text-sm text-slate-400 font-mono mt-1">{currentWord.phonetic}</p>
+                )}
               </div>
             )}
           </div>
@@ -245,7 +254,6 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal }) => {
           </button>
         </div>
 
-        {/* Mode-specific interactive area */}
         {mode === 'quiz' && !revealed && currentWord.quiz_options && (
           <div className="space-y-2.5 pt-2">
             {currentWord.quiz_options.map((opt) => (
@@ -293,7 +301,6 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal }) => {
           </button>
         )}
 
-        {/* Revealed Answer Details */}
         {revealed && (
           <div className="space-y-4 pt-2 border-t border-slate-100">
             {mode === 'quiz' && selectedOption && (
@@ -379,11 +386,9 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal }) => {
         )}
       </div>
 
-      {/* Bottom SM-2 Action Buttons */}
       <div className="grid grid-cols-3 gap-2.5">
         <button
           type="button"
-          disabled={submitting}
           onClick={() => handleAction('forgot')}
           className="py-3.5 rounded-2xl bg-rose-50 text-rose-700 border border-rose-200 font-semibold text-sm active:scale-[0.98] transition"
         >
@@ -391,7 +396,6 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal }) => {
         </button>
         <button
           type="button"
-          disabled={submitting}
           onClick={() => handleAction('fuzzy')}
           className="py-3.5 rounded-2xl bg-amber-50 text-amber-700 border border-amber-200 font-semibold text-sm active:scale-[0.98] transition"
         >
@@ -399,7 +403,6 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal }) => {
         </button>
         <button
           type="button"
-          disabled={submitting}
           onClick={() => handleAction('known')}
           className="py-3.5 rounded-2xl bg-emerald-600 text-white font-semibold text-sm shadow-md shadow-emerald-200 active:scale-[0.98] transition"
         >
