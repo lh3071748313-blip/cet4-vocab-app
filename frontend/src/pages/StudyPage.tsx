@@ -7,15 +7,19 @@ import {
   Keyboard,
   Layers,
   RefreshCw,
+  Shuffle,
   Sparkles,
   Volume2,
   XCircle,
+  Zap,
 } from 'lucide-react';
 import { api } from '../api/client';
 import type { WordItem } from '../types';
 import { speakEnglish } from '../utils/tts';
 
-type StudyMode = 'card' | 'quiz' | 'spell';
+type StudyMode = 'card' | 'quiz' | 'spell' | 'flash';
+type OrderType = 'sequential' | 'random';
+type ScopeType = 'all' | 'core';
 
 interface Props {
   dailyGoal: number;
@@ -29,32 +33,42 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
   const [studiedToday, setStudiedToday] = useState(0);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<StudyMode>('card');
+  const [order, setOrder] = useState<OrderType>(
+    () => (localStorage.getItem('cet4_study_order') as OrderType) || 'sequential'
+  );
+  const [scope, setScope] = useState<ScopeType>(
+    () => (localStorage.getItem('cet4_study_scope') as ScopeType) || 'all'
+  );
   const [revealed, setRevealed] = useState(false);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [spellInput, setSpellInput] = useState('');
   const [spellChecked, setSpellChecked] = useState<'correct' | 'wrong' | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
-  const loadQueue = useCallback(async () => {
-    setLoading((prev) => (queue.length === 0 ? true : prev));
-    try {
-      const res = await api.getTodayQueue(dailyGoal);
-      setQueue(res.queue);
-      setDueCount(res.due_count);
-      setStudiedToday(res.studied_today);
-      setIndex(0);
-      setRevealed(false);
-      setSelectedOption(null);
-      setSpellInput('');
-      setSpellChecked(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [dailyGoal]);
+  const loadQueue = useCallback(
+    async (customOrder = order, customScope = scope, customMode = mode) => {
+      setLoading((prev) => (queue.length === 0 ? true : prev));
+      const fetchLimit = customMode === 'flash' ? Math.max(dailyGoal, 50) : dailyGoal;
+      try {
+        const res = await api.getTodayQueue(fetchLimit, customOrder, customScope);
+        setQueue(res.queue);
+        setDueCount(res.due_count);
+        setStudiedToday(res.studied_today);
+        setIndex(0);
+        setRevealed(false);
+        setSelectedOption(null);
+        setSpellInput('');
+        setSpellChecked(null);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [dailyGoal, order, scope, mode]
+  );
 
   useEffect(() => {
-    loadQueue();
-  }, [loadQueue]);
+    loadQueue(order, scope, mode);
+  }, [dailyGoal, order, scope]);
 
   const currentWord = queue[index];
 
@@ -66,14 +80,38 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
 
   const showToast = (msg: string) => {
     setToast(msg);
-    setTimeout(() => setToast(null), 1600);
+    setTimeout(() => setToast(null), 1500);
+  };
+
+  const handleToggleOrder = (next: OrderType) => {
+    if (next === order) return;
+    setOrder(next);
+    localStorage.setItem('cet4_study_order', next);
+  };
+
+  const handleToggleScope = (next: ScopeType) => {
+    if (next === scope) return;
+    setScope(next);
+    localStorage.setItem('cet4_study_scope', next);
+  };
+
+  const handleSwitchMode = (nextMode: StudyMode) => {
+    const prevWasFlash = mode === 'flash';
+    setMode(nextMode);
+    setRevealed(false);
+    setSelectedOption(null);
+    setSpellInput('');
+    setSpellChecked(null);
+    if (nextMode === 'flash' && !prevWasFlash && queue.length < 40) {
+      loadQueue(order, scope, nextMode);
+    }
   };
 
   // Optimistic UI: advance to next word immediately (0ms delay), sync to server in background
   const handleAction = (action: 'known' | 'fuzzy' | 'forgot') => {
     if (!currentWord) return;
     const targetWord = currentWord;
-    const currentMode = mode;
+    const submitMode = mode === 'flash' ? 'card' : mode;
 
     setStudiedToday((n) => n + 1);
     setIndex((i) => i + 1);
@@ -91,13 +129,12 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
     }
 
     api
-      .submitReview(targetWord.id, action, currentMode)
+      .submitReview(targetWord.id, action, submitMode)
       .then(() => {
         onMutated?.();
       })
       .catch(() => {
-        // Retry once silently on transient network hiccup
-        api.submitReview(targetWord.id, action, currentMode).then(() => onMutated?.()).catch(() => {});
+        api.submitReview(targetWord.id, action, submitMode).then(() => onMutated?.()).catch(() => {});
       });
   };
 
@@ -128,26 +165,38 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
         <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-4">
           <CheckCircle2 className="w-8 h-8" />
         </div>
-        <h3 className="text-xl font-bold text-slate-900">今日任务已完成！</h3>
+        <h3 className="text-xl font-bold text-slate-900">本组词汇已刷完！</h3>
         <p className="text-sm text-slate-500 mt-2">
           今天已学习 <span className="font-semibold text-indigo-600">{studiedToday}</span> 个词汇，记忆曲线正在发挥作用。
         </p>
-        <button
-          type="button"
-          onClick={loadQueue}
-          className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium shadow-md shadow-indigo-200 hover:bg-indigo-700 transition"
-        >
-          <RefreshCw className="w-4 h-4" />
-          再来一组新词
-        </button>
+        <div className="mt-5 flex items-center justify-center gap-2">
+          <button
+            type="button"
+            onClick={() => loadQueue(order, scope, mode)}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium shadow-md shadow-indigo-200 hover:bg-indigo-700 transition"
+          >
+            <RefreshCw className="w-4 h-4" />
+            再来一组
+          </button>
+          {scope === 'core' && (
+            <button
+              type="button"
+              onClick={() => handleToggleScope('all')}
+              className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-sm font-medium"
+            >
+              切到全部词库
+            </button>
+          )}
+        </div>
       </div>
     );
   }
 
   const progressPct = Math.min(100, Math.round(((index + 1) / queue.length) * 100));
+  const showDetails = mode === 'flash' || revealed;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3.5">
       <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 space-y-3">
         <div className="flex items-center justify-between text-xs">
           <div className="flex items-center gap-2">
@@ -156,7 +205,7 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
               本组 {index + 1} / {queue.length}
             </span>
             {dueCount > 0 && (
-              <span className="text-slate-500">含 {dueCount} 个到期复习词</span>
+              <span className="text-slate-500">含 {dueCount} 复习</span>
             )}
           </div>
           <span className="text-slate-500">今日已学 {studiedToday} 词</span>
@@ -169,11 +218,59 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
           />
         </div>
 
-        <div className="grid grid-cols-3 gap-1.5 bg-slate-100 p-1 rounded-xl">
+        {/* Scope & Order Pills */}
+        <div className="flex items-center justify-between gap-2 text-[11px]">
+          <div className="flex bg-slate-100 p-0.5 rounded-lg">
+            <button
+              type="button"
+              onClick={() => handleToggleScope('all')}
+              className={`px-2.5 py-1 rounded-md font-medium transition ${
+                scope === 'all' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600'
+              }`}
+            >
+              全部词库
+            </button>
+            <button
+              type="button"
+              onClick={() => handleToggleScope('core')}
+              className={`px-2.5 py-1 rounded-md font-medium transition ${
+                scope === 'core' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-600'
+              }`}
+            >
+              核心高频
+            </button>
+          </div>
+
+          <div className="flex bg-slate-100 p-0.5 rounded-lg">
+            <button
+              type="button"
+              onClick={() => handleToggleOrder('sequential')}
+              className={`px-2.5 py-1 rounded-md font-medium transition ${
+                order === 'sequential' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600'
+              }`}
+            >
+              顺序
+            </button>
+            <button
+              type="button"
+              onClick={() => handleToggleOrder('random')}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md font-medium transition ${
+                order === 'random' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-600'
+              }`}
+            >
+              <Shuffle className="w-3 h-3" />
+              乱序
+            </button>
+          </div>
+        </div>
+
+        {/* 4 Study Modes */}
+        <div className="grid grid-cols-4 gap-1 bg-slate-100 p-1 rounded-xl">
           {[
-            { id: 'card' as const, label: '卡片记忆', icon: Layers },
-            { id: 'quiz' as const, label: '词义测验', icon: HelpCircle },
-            { id: 'spell' as const, label: '拼写默写', icon: Keyboard },
+            { id: 'card' as const, label: '卡片', icon: Layers },
+            { id: 'flash' as const, label: '快刷', icon: Zap },
+            { id: 'quiz' as const, label: '测验', icon: HelpCircle },
+            { id: 'spell' as const, label: '拼写', icon: Keyboard },
           ].map((m) => {
             const Icon = m.icon;
             const active = mode === m.id;
@@ -181,14 +278,8 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
               <button
                 key={m.id}
                 type="button"
-                onClick={() => {
-                  setMode(m.id);
-                  setRevealed(false);
-                  setSelectedOption(null);
-                  setSpellInput('');
-                  setSpellChecked(null);
-                }}
-                className={`flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition ${
+                onClick={() => handleSwitchMode(m.id)}
+                className={`flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-medium transition ${
                   active ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600'
                 }`}
               >
@@ -219,6 +310,11 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
               >
                 {currentWord.is_new ? '新词' : '曲线复习'}
               </span>
+              {currentWord.frequency >= 4 && (
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-medium">
+                  核心高频
+                </span>
+              )}
               <span className="text-[11px] text-amber-500">
                 {'★'.repeat(currentWord.frequency || 3)}
               </span>
@@ -301,7 +397,7 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
           </button>
         )}
 
-        {revealed && (
+        {showDetails && (
           <div className="space-y-4 pt-2 border-t border-slate-100">
             {mode === 'quiz' && selectedOption && (
               <div
@@ -386,29 +482,49 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
         )}
       </div>
 
-      <div className="grid grid-cols-3 gap-2.5">
-        <button
-          type="button"
-          onClick={() => handleAction('forgot')}
-          className="py-3.5 rounded-2xl bg-rose-50 text-rose-700 border border-rose-200 font-semibold text-sm active:scale-[0.98] transition"
-        >
-          忘记 / 错题
-        </button>
-        <button
-          type="button"
-          onClick={() => handleAction('fuzzy')}
-          className="py-3.5 rounded-2xl bg-amber-50 text-amber-700 border border-amber-200 font-semibold text-sm active:scale-[0.98] transition"
-        >
-          模糊
-        </button>
-        <button
-          type="button"
-          onClick={() => handleAction('known')}
-          className="py-3.5 rounded-2xl bg-emerald-600 text-white font-semibold text-sm shadow-md shadow-emerald-200 active:scale-[0.98] transition"
-        >
-          认识
-        </button>
-      </div>
+      {mode === 'flash' ? (
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => handleAction('forgot')}
+            className="py-4 rounded-2xl bg-rose-50 text-rose-700 border border-rose-200 font-semibold text-sm active:scale-[0.98] transition"
+          >
+            不熟 / 加错题
+          </button>
+          <button
+            type="button"
+            onClick={() => handleAction('known')}
+            className="py-4 rounded-2xl bg-indigo-600 text-white font-semibold text-sm shadow-md shadow-indigo-200 active:scale-[0.98] transition flex items-center justify-center gap-1.5"
+          >
+            <Zap className="w-4 h-4" />
+            认识 / 下一个
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-2.5">
+          <button
+            type="button"
+            onClick={() => handleAction('forgot')}
+            className="py-3.5 rounded-2xl bg-rose-50 text-rose-700 border border-rose-200 font-semibold text-sm active:scale-[0.98] transition"
+          >
+            忘记 / 错题
+          </button>
+          <button
+            type="button"
+            onClick={() => handleAction('fuzzy')}
+            className="py-3.5 rounded-2xl bg-amber-50 text-amber-700 border border-amber-200 font-semibold text-sm active:scale-[0.98] transition"
+          >
+            模糊
+          </button>
+          <button
+            type="button"
+            onClick={() => handleAction('known')}
+            className="py-3.5 rounded-2xl bg-emerald-600 text-white font-semibold text-sm shadow-md shadow-emerald-200 active:scale-[0.98] transition"
+          >
+            认识
+          </button>
+        </div>
+      )}
     </div>
   );
 };

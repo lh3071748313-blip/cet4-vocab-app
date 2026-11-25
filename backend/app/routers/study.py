@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import random
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -18,25 +18,30 @@ router = APIRouter(prefix="/api/study", tags=["study"])
 
 @router.get("/today")
 def get_today_queue(
-    limit: int = Query(default=20, ge=1, le=100),
+    limit: int = Query(default=20, ge=1, le=200),
+    order: Literal["sequential", "random"] = Query(default="sequential"),
+    scope: Literal["all", "core"] = Query(default="all"),
     current_user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Return due review words first, followed by new unlearned words up to daily goal."""
     user_id = current_user["id"]
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    scope_filter = "AND w.frequency >= 4" if scope == "core" else ""
+    due_order = "RANDOM()" if order == "random" else "p.is_mistake DESC, p.next_review_at ASC"
+    new_order = "RANDOM()" if order == "random" else "w.frequency DESC, w.id ASC"
 
     with get_conn() as conn:
         # 1. Words due for review (next_review_at <= now)
         due_rows = conn.execute(
-            """
+            f"""
             SELECT w.*, p.repetitions, p.interval_days, p.ease_factor,
                    p.mastery_level, p.wrong_count, p.is_mistake, p.next_review_at,
                    0 AS is_new
             FROM user_word_progress p
             JOIN words w ON w.id = p.word_id
-            WHERE p.user_id = ? AND p.next_review_at <= ?
-            ORDER BY p.is_mistake DESC, p.next_review_at ASC
+            WHERE p.user_id = ? AND p.next_review_at <= ? {scope_filter}
+            ORDER BY {due_order}
             LIMIT ?
             """,
             (user_id, now_str, limit),
@@ -57,7 +62,7 @@ def get_today_queue(
         new_rows = []
         if remaining_slots > 0:
             new_rows = conn.execute(
-                """
+                f"""
                 SELECT w.*, 0 AS repetitions, 0 AS interval_days, 2.5 AS ease_factor,
                        0 AS mastery_level, 0 AS wrong_count, 0 AS is_mistake,
                        NULL AS next_review_at, 1 AS is_new
@@ -65,8 +70,8 @@ def get_today_queue(
                 WHERE NOT EXISTS (
                     SELECT 1 FROM user_word_progress p
                     WHERE p.user_id = ? AND p.word_id = w.id
-                )
-                ORDER BY w.frequency DESC, w.id ASC
+                ) {scope_filter}
+                ORDER BY {new_order}
                 LIMIT ?
                 """,
                 (user_id, remaining_slots),

@@ -90,7 +90,8 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ daily_goal }),
     }),
-  getTodayQueue: (limit = 20) => request<StudyQueueResponse>(`/api/study/today?limit=${limit}`),
+  getTodayQueue: (limit = 20, order: 'sequential' | 'random' = 'sequential', scope: 'all' | 'core' = 'all') =>
+    request<StudyQueueResponse>(`/api/study/today?limit=${limit}&order=${order}&scope=${scope}`),
   submitReview: (word_id: number, action: 'known' | 'fuzzy' | 'forgot', mode: 'card' | 'quiz' | 'spell' | 'mistake') =>
     request<{
       word_id: number;

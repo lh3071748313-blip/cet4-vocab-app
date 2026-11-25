@@ -92,3 +92,10 @@ def test_auth_study_mistakes_and_stats_flow(client: TestClient):
     search = client.get("/api/words?q=abandon", headers=headers)
     assert search.status_code == 200
     assert search.json()["total"] >= 1
+
+    # 9. Core scope + random order
+    core_rand = client.get("/api/study/today?limit=30&order=random&scope=core", headers=headers)
+    assert core_rand.status_code == 200
+    core_queue = core_rand.json()["queue"]
+    assert len(core_queue) > 0
+    assert all(item["frequency"] >= 4 for item in core_queue)
