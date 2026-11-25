@@ -32,81 +32,150 @@ export const ImmersiveStudy: React.FC<Props> = ({
 }) => {
   const [revealed, setRevealed] = useState(false);
   const [pendingAction, setPendingAction] = useState<'known' | 'fuzzy' | 'forgot' | null>(null);
-  const [dragX, setDragX] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const [leavingDir, setLeavingDir] = useState<'left' | 'right' | null>(null);
-  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const [hintDir, setHintDir] = useState<'left' | 'right' | null>(null);
 
-  const currentWord = queue[index];
-  const nextWord = queue[index + 1];
+  const topCardRef = useRef<HTMLDivElement | null>(null);
+  const nextCardRef = useRef<HTMLDivElement | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const currentDxRef = useRef(0);
+  const isLeavingRef = useRef(false);
+  const hintDirRef = useRef<'left' | 'right' | null>(null);
+  const rafRef = useRef<number | null>(null);
 
   const autoSpeakRef = useRef(autoSpeak);
   autoSpeakRef.current = autoSpeak;
 
+  const currentWord = queue[index];
+  const nextWord = queue[index + 1];
+
+  const applyCardTransforms = (dx: number, animated: boolean, leaving = false) => {
+    const topEl = topCardRef.current;
+    const nextEl = nextCardRef.current;
+    if (topEl) {
+      topEl.style.transition = animated
+        ? 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease-out'
+        : 'none';
+      const yOffset = leaving ? -14 : 0;
+      topEl.style.transform = `translate3d(${dx}px, ${yOffset}px, 0) rotate(${dx * 0.035}deg)`;
+      topEl.style.opacity = leaving ? '0' : String(Math.max(0.68, 1 - Math.abs(dx) / 420));
+    }
+    if (nextEl) {
+      nextEl.style.transition = animated
+        ? 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease-out'
+        : 'none';
+      const ratio = revealed || leaving ? (leaving ? 1 : Math.min(1, Math.abs(dx) / 220)) : 0;
+      const scale = 0.94 + ratio * 0.06;
+      const ty = 14 - ratio * 14;
+      const op = 0.45 + ratio * 0.55;
+      nextEl.style.transform = `translate3d(0, ${ty}px, 0) scale(${scale})`;
+      nextEl.style.opacity = String(op);
+    }
+  };
+
   useEffect(() => {
     setRevealed(false);
     setPendingAction(null);
-    setDragX(0);
-    setLeavingDir(null);
+    setHintDir(null);
+    hintDirRef.current = null;
+    currentDxRef.current = 0;
+    isLeavingRef.current = false;
+
+    const topEl = topCardRef.current;
+    const nextEl = nextCardRef.current;
+    if (topEl) {
+      topEl.style.transition = 'none';
+      topEl.style.transform = 'translate3d(0, 0, 0) rotate(0deg)';
+      topEl.style.opacity = '1';
+    }
+    if (nextEl) {
+      nextEl.style.transition = 'none';
+      nextEl.style.transform = 'translate3d(0, 14px, 0) scale(0.94)';
+      nextEl.style.opacity = '0.45';
+    }
+
     if (currentWord && autoSpeakRef.current) {
       speakEnglish(currentWord.word);
     }
   }, [currentWord?.id]);
 
   const triggerNextWithFlyOut = (dir: 'left' | 'right', action: 'known' | 'fuzzy' | 'forgot') => {
-    if (leavingDir) return;
-    setLeavingDir(dir);
-    setDragX(dir === 'left' ? -440 : 440);
+    if (isLeavingRef.current) return;
+    isLeavingRef.current = true;
+    setHintDir(null);
+    hintDirRef.current = null;
+    const targetX = dir === 'left' ? -window.innerWidth * 1.15 : window.innerWidth * 1.15;
+    applyCardTransforms(targetX, true, true);
     setTimeout(() => {
       onCommit(action);
-    }, 190);
+    }, 185);
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    if (leavingDir) return;
+    if (isLeavingRef.current) return;
     const t = e.touches[0];
     touchStartRef.current = { x: t.clientX, y: t.clientY };
-    setIsDragging(true);
+    currentDxRef.current = 0;
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    if (!touchStartRef.current || leavingDir) return;
+    if (!touchStartRef.current || isLeavingRef.current) return;
     const t = e.touches[0];
     const dx = t.clientX - touchStartRef.current.x;
     const dy = t.clientY - touchStartRef.current.y;
     if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
-      setDragX(dx);
+      currentDxRef.current = dx;
+      const nextHint = dx <= -24 ? 'left' : dx >= 24 ? 'right' : null;
+      if (nextHint !== hintDirRef.current) {
+        hintDirRef.current = nextHint;
+        setHintDir(nextHint);
+      }
+      if (rafRef.current === null) {
+        rafRef.current = requestAnimationFrame(() => {
+          rafRef.current = null;
+          if (!isLeavingRef.current) {
+            applyCardTransforms(currentDxRef.current, false, false);
+          }
+        });
+      }
     }
   };
 
   const handleTouchEnd = () => {
-    if (!touchStartRef.current || leavingDir) return;
+    if (!touchStartRef.current || isLeavingRef.current) return;
     touchStartRef.current = null;
-    setIsDragging(false);
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
 
-    if (dragX <= -65) {
+    const dx = currentDxRef.current;
+    currentDxRef.current = 0;
+    setHintDir(null);
+    hintDirRef.current = null;
+
+    if (dx <= -65) {
       if (!revealed) {
-        setDragX(0);
+        applyCardTransforms(0, true, false);
         setPendingAction('known');
         setRevealed(true);
         return;
       }
       triggerNextWithFlyOut('left', pendingAction || 'known');
-    } else if (dragX >= 65) {
+    } else if (dx >= 65) {
       if (!revealed) {
-        setDragX(0);
+        applyCardTransforms(0, true, false);
         setPendingAction('forgot');
         setRevealed(true);
         return;
       }
       triggerNextWithFlyOut('right', 'forgot');
     } else {
-      setDragX(0);
+      applyCardTransforms(0, true, false);
     }
   };
 
   const handleButtonAction = (action: 'known' | 'fuzzy' | 'forgot') => {
-    if (!currentWord || leavingDir) return;
+    if (!currentWord || isLeavingRef.current) return;
     if (!revealed) {
       setPendingAction(action);
       setRevealed(true);
@@ -115,21 +184,16 @@ export const ImmersiveStudy: React.FC<Props> = ({
     triggerNextWithFlyOut(action === 'forgot' ? 'right' : 'left', action);
   };
 
-  // Smoothly interpolate background card scale/opacity when top card is dragged after reveal
-  const dragRatio = revealed ? Math.min(1, Math.abs(dragX) / 220) : 0;
-  const nextScale = leavingDir ? 1 : 0.94 + dragRatio * 0.06;
-  const nextTranslateY = leavingDir ? 0 : 14 - dragRatio * 14;
-  const nextOpacity = leavingDir ? 1 : 0.42 + dragRatio * 0.58;
-
   const progressPct = queue.length > 0 ? Math.min(100, Math.round(((index + 1) / queue.length) * 100)) : 100;
 
   return (
-    <div className="fixed inset-0 z-50 bg-gradient-to-br from-[#0b1021] via-[#151c3b] to-[#0f172a] text-white flex flex-col safe-top safe-bottom overflow-hidden">
-      {/* Ambient Aurora Glow */}
-      <div className="pointer-events-none absolute -top-28 -left-24 w-80 h-80 rounded-full bg-indigo-500/20 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-28 -right-24 w-96 h-96 rounded-full bg-violet-500/20 blur-3xl" />
-      <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 rounded-full bg-sky-500/10 blur-3xl" />
-
+    <div
+      className="fixed inset-0 z-50 text-white flex flex-col safe-top safe-bottom overflow-hidden"
+      style={{
+        background:
+          'radial-gradient(circle at 15% 15%, rgba(99, 102, 241, 0.28) 0%, transparent 45%), radial-gradient(circle at 85% 85%, rgba(139, 92, 246, 0.24) 0%, transparent 48%), linear-gradient(160deg, #0b1021 0%, #141c3a 55%, #0d1326 100%)',
+      }}
+    >
       {/* Top Minimal Header */}
       <div className="relative z-10 px-4 pt-3 pb-2 flex items-center justify-between gap-2.5">
         <button
@@ -191,7 +255,7 @@ export const ImmersiveStudy: React.FC<Props> = ({
       {/* Card Stack Stage */}
       <div className="flex-1 flex flex-col justify-center px-5 py-3 relative max-w-lg w-full mx-auto">
         {!currentWord ? (
-          <div className="bg-white/10 backdrop-blur-xl border border-white/15 rounded-3xl p-8 text-center space-y-4">
+          <div className="bg-[#1b2345] border border-white/15 rounded-3xl p-8 text-center space-y-4">
             <h3 className="text-2xl font-bold">本组沉浸刷词完成！</h3>
             <p className="text-sm text-indigo-200/80">记忆曲线已同步保存</p>
             <div className="flex justify-center gap-3 pt-2">
@@ -213,18 +277,16 @@ export const ImmersiveStudy: React.FC<Props> = ({
           </div>
         ) : (
           <div className="relative w-full min-h-[380px] flex items-center justify-center">
-            {/* Underlying Next Card (Preview) */}
+            {/* Underlying Next Card (Preview - zero backdrop-blur for 60/120fps) */}
             {nextWord && (
               <div
+                ref={nextCardRef}
                 key={`next-${nextWord.id}`}
                 style={{
-                  transform: `translate3d(0, ${nextTranslateY}px, 0) scale(${nextScale})`,
-                  opacity: nextOpacity,
-                  transition: isDragging
-                    ? 'none'
-                    : 'transform 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease-out',
+                  transform: 'translate3d(0, 14px, 0) scale(0.94)',
+                  opacity: 0.45,
                 }}
-                className="absolute inset-x-0 bg-white/10 backdrop-blur-md border border-white/10 rounded-[2rem] p-7 min-h-[360px] flex flex-col justify-between pointer-events-none will-change-transform"
+                className="absolute inset-x-0 bg-[#171e3b] border border-white/10 rounded-[2rem] p-7 min-h-[360px] flex flex-col justify-between pointer-events-none will-change-transform"
               >
                 <div>
                   <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-white/10 text-indigo-200">
@@ -240,28 +302,21 @@ export const ImmersiveStudy: React.FC<Props> = ({
               </div>
             )}
 
-            {/* Active Top Card */}
+            {/* Active Top Card (zero backdrop-blur, direct DOM GPU transform) */}
             <div
+              ref={topCardRef}
               key={currentWord.id}
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
-              style={{
-                transform: `translate3d(${dragX}px, ${leavingDir ? -16 : 0}px, 0) rotate(${dragX * 0.04}deg)`,
-                opacity: leavingDir ? 0 : Math.max(0.65, 1 - Math.abs(dragX) / 380),
-                transition: isDragging
-                  ? 'none'
-                  : 'transform 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease-out',
-              }}
-              className="relative w-full bg-gradient-to-br from-white/[0.09] to-white/[0.03] backdrop-blur-2xl border border-white/20 rounded-[2rem] p-7 min-h-[360px] shadow-[0_24px_60px_-15px_rgba(0,0,0,0.65)] flex flex-col justify-between touch-pan-y select-none will-change-transform"
+              className="relative w-full bg-gradient-to-br from-[#1f284d] to-[#171e3b] border border-white/20 rounded-[2rem] p-7 min-h-[360px] shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex flex-col justify-between touch-pan-y select-none will-change-transform"
             >
-              {/* Swipe Indicator Badges */}
-              {dragX <= -22 && (
+              {hintDir === 'left' && (
                 <div className="absolute top-5 right-5 z-10 px-3.5 py-1.5 rounded-full bg-emerald-500 text-white text-xs font-bold shadow-lg">
                   {!revealed ? '认识 · 看释义 →' : '确认 · 下一词 →'}
                 </div>
               )}
-              {dragX >= 22 && (
+              {hintDir === 'right' && (
                 <div className="absolute top-5 left-5 z-10 px-3.5 py-1.5 rounded-full bg-rose-500 text-white text-xs font-bold shadow-lg">
                   {!revealed ? '← 不熟 · 看释义' : '← 记错了 · 加错题'}
                 </div>
@@ -295,7 +350,7 @@ export const ImmersiveStudy: React.FC<Props> = ({
                 )}
 
                 {revealed ? (
-                  <div className="mt-6 pt-5 border-t border-white/10 space-y-3.5 animate-[fadeIn_180ms_ease-out]">
+                  <div className="mt-6 pt-5 border-t border-white/10 space-y-3.5 animate-[fadeIn_160ms_ease-out]">
                     <p className="text-lg font-semibold text-white leading-snug">
                       <span className="text-indigo-300 mr-2">{currentWord.pos}</span>
                       {currentWord.meaning}

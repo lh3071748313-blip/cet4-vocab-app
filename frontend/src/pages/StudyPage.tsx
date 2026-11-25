@@ -51,10 +51,13 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [spellInput, setSpellInput] = useState('');
   const [spellChecked, setSpellChecked] = useState<'correct' | 'wrong' | null>(null);
-  const [dragX, setDragX] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const [isLeaving, setIsLeaving] = useState(false);
+  const [hintDir, setHintDir] = useState<'left' | 'right' | null>(null);
+  const cardRef = useRef<HTMLDivElement | null>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const currentDxRef = useRef(0);
+  const isLeavingRef = useRef(false);
+  const hintDirRef = useRef<'left' | 'right' | null>(null);
+  const rafRef = useRef<number | null>(null);
 
   const loadQueue = useCallback(
     async (customOrder = order, customScope = scope, customMode = mode) => {
@@ -176,56 +179,86 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
     speakEnglish(currentWord.word);
   };
 
+  const applyCardTransform = (dx: number, animated: boolean, leaving = false) => {
+    const el = cardRef.current;
+    if (!el) return;
+    el.style.transition = animated
+      ? 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease-out'
+      : 'none';
+    el.style.transform = `translate3d(${dx}px, 0, 0) rotate(${dx * 0.03}deg)`;
+    el.style.opacity = leaving ? '0' : String(Math.max(0.6, 1 - Math.abs(dx) / 360));
+  };
+
   const handleTouchStart = (e: React.TouchEvent) => {
+    if (isLeavingRef.current) return;
     const t = e.touches[0];
     touchStartRef.current = { x: t.clientX, y: t.clientY };
-    setIsDragging(true);
+    currentDxRef.current = 0;
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    if (!touchStartRef.current) return;
+    if (!touchStartRef.current || isLeavingRef.current) return;
     const t = e.touches[0];
     const dx = t.clientX - touchStartRef.current.x;
     const dy = t.clientY - touchStartRef.current.y;
-    if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
-      setDragX(dx);
+    if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
+      currentDxRef.current = dx;
+      const nextHint = dx <= -24 ? 'left' : dx >= 24 ? 'right' : null;
+      if (nextHint !== hintDirRef.current) {
+        hintDirRef.current = nextHint;
+        setHintDir(nextHint);
+      }
+      if (rafRef.current === null) {
+        rafRef.current = requestAnimationFrame(() => {
+          rafRef.current = null;
+          if (!isLeavingRef.current) {
+            applyCardTransform(currentDxRef.current, false, false);
+          }
+        });
+      }
     }
   };
 
   const handleTouchEnd = () => {
-    if (!touchStartRef.current) return;
+    if (!touchStartRef.current || isLeavingRef.current) return;
     touchStartRef.current = null;
-    setIsDragging(false);
-    if (dragX <= -70) {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    const dx = currentDxRef.current;
+    currentDxRef.current = 0;
+    setHintDir(null);
+    hintDirRef.current = null;
+
+    if (dx <= -65) {
       if (mode === 'card' && !revealed) {
-        setDragX(0);
+        applyCardTransform(0, true, false);
         setPendingAction('known');
         setRevealed(true);
         return;
       }
-      setIsLeaving(true);
-      setDragX(-360);
+      isLeavingRef.current = true;
+      applyCardTransform(-380, true, true);
       setTimeout(() => {
-        setIsLeaving(false);
-        setDragX(0);
+        isLeavingRef.current = false;
         commitAndNext(pendingAction || 'known');
-      }, 150);
-    } else if (dragX >= 70) {
+      }, 160);
+    } else if (dx >= 65) {
       if (mode === 'card' && !revealed) {
-        setDragX(0);
+        applyCardTransform(0, true, false);
         setPendingAction('forgot');
         setRevealed(true);
         return;
       }
-      setIsLeaving(true);
-      setDragX(360);
+      isLeavingRef.current = true;
+      applyCardTransform(380, true, true);
       setTimeout(() => {
-        setIsLeaving(false);
-        setDragX(0);
+        isLeavingRef.current = false;
         commitAndNext('forgot');
-      }, 150);
+      }, 160);
     } else {
-      setDragX(0);
+      applyCardTransform(0, true, false);
     }
   };
 
@@ -391,25 +424,19 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
       </div>
 
       <div
+        ref={cardRef}
         key={currentWord.id}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        style={{
-          transform: `translate3d(${dragX}px, 0, 0) rotate(${dragX * 0.035}deg)`,
-          opacity: isLeaving ? 0 : Math.max(0.55, 1 - Math.abs(dragX) / 300),
-          transition: isDragging
-            ? 'none'
-            : 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease-out',
-        }}
         className="relative bg-white rounded-3xl p-6 shadow-sm border border-slate-100 space-y-5 touch-pan-y select-none will-change-transform"
       >
-        {dragX <= -24 && (
+        {hintDir === 'left' && (
           <div className="absolute top-4 right-4 z-10 px-3 py-1 rounded-full bg-emerald-500 text-white text-xs font-bold shadow">
             {mode === 'card' && !revealed ? '认识 · 看释义 →' : '确认 · 下一词 →'}
           </div>
         )}
-        {dragX >= 24 && (
+        {hintDir === 'right' && (
           <div className="absolute top-4 left-4 z-10 px-3 py-1 rounded-full bg-rose-500 text-white text-xs font-bold shadow">
             {mode === 'card' && !revealed ? '← 不熟 · 看释义' : '← 记错了 · 加错题'}
           </div>
