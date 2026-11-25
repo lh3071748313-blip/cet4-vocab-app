@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Shuffle, Sparkles, Volume2, X } from 'lucide-react';
+import { Shuffle, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
 import type { WordItem } from '../types';
 import { speakEnglish } from '../utils/tts';
 
@@ -8,6 +8,8 @@ interface Props {
   index: number;
   order: 'sequential' | 'random';
   scope: 'all' | 'core';
+  autoSpeak: boolean;
+  onToggleAutoSpeak: () => void;
   onToggleOrder: () => void;
   onToggleScope: () => void;
   onCommit: (action: 'known' | 'fuzzy' | 'forgot') => void;
@@ -20,6 +22,8 @@ export const ImmersiveStudy: React.FC<Props> = ({
   index,
   order,
   scope,
+  autoSpeak,
+  onToggleAutoSpeak,
   onToggleOrder,
   onToggleScope,
   onCommit,
@@ -36,12 +40,15 @@ export const ImmersiveStudy: React.FC<Props> = ({
   const currentWord = queue[index];
   const nextWord = queue[index + 1];
 
+  const autoSpeakRef = useRef(autoSpeak);
+  autoSpeakRef.current = autoSpeak;
+
   useEffect(() => {
     setRevealed(false);
     setPendingAction(null);
     setDragX(0);
     setLeavingDir(null);
-    if (currentWord) {
+    if (currentWord && autoSpeakRef.current) {
       speakEnglish(currentWord.word);
     }
   }, [currentWord?.id]);
@@ -117,9 +124,14 @@ export const ImmersiveStudy: React.FC<Props> = ({
   const progressPct = queue.length > 0 ? Math.min(100, Math.round(((index + 1) / queue.length) * 100)) : 100;
 
   return (
-    <div className="fixed inset-0 z-50 bg-gradient-to-b from-slate-950 via-indigo-950 to-slate-950 text-white flex flex-col safe-top safe-bottom overflow-hidden">
+    <div className="fixed inset-0 z-50 bg-gradient-to-br from-[#0b1021] via-[#151c3b] to-[#0f172a] text-white flex flex-col safe-top safe-bottom overflow-hidden">
+      {/* Ambient Aurora Glow */}
+      <div className="pointer-events-none absolute -top-28 -left-24 w-80 h-80 rounded-full bg-indigo-500/20 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-28 -right-24 w-96 h-96 rounded-full bg-violet-500/20 blur-3xl" />
+      <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 rounded-full bg-sky-500/10 blur-3xl" />
+
       {/* Top Minimal Header */}
-      <div className="px-4 pt-3 pb-2 flex items-center justify-between gap-3">
+      <div className="relative z-10 px-4 pt-3 pb-2 flex items-center justify-between gap-2.5">
         <button
           type="button"
           onClick={onClose}
@@ -143,6 +155,17 @@ export const ImmersiveStudy: React.FC<Props> = ({
         </div>
 
         <div className="flex items-center gap-1.5 text-[11px]">
+          <button
+            type="button"
+            onClick={onToggleAutoSpeak}
+            className={`p-1.5 rounded-full transition ${
+              autoSpeak ? 'bg-indigo-400/25 text-indigo-200 border border-indigo-400/30' : 'bg-white/10 text-slate-400'
+            }`}
+            title={autoSpeak ? '关闭自动朗读' : '开启自动朗读'}
+            aria-label={autoSpeak ? '关闭自动朗读' : '开启自动朗读'}
+          >
+            {autoSpeak ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+          </button>
           <button
             type="button"
             onClick={onToggleScope}
@@ -230,7 +253,7 @@ export const ImmersiveStudy: React.FC<Props> = ({
                   ? 'none'
                   : 'transform 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease-out',
               }}
-              className="relative w-full bg-gradient-to-br from-slate-900/95 to-indigo-950/95 backdrop-blur-xl border border-white/15 rounded-[2rem] p-7 min-h-[360px] shadow-2xl flex flex-col justify-between touch-pan-y select-none will-change-transform"
+              className="relative w-full bg-gradient-to-br from-white/[0.09] to-white/[0.03] backdrop-blur-2xl border border-white/20 rounded-[2rem] p-7 min-h-[360px] shadow-[0_24px_60px_-15px_rgba(0,0,0,0.65)] flex flex-col justify-between touch-pan-y select-none will-change-transform"
             >
               {/* Swipe Indicator Badges */}
               {dragX <= -22 && (

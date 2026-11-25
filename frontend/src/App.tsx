@@ -77,7 +77,7 @@ export function App() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-24">
+    <div className="min-h-screen bg-gradient-to-b from-indigo-50/70 via-slate-50 to-slate-100/90 pb-24">
       <header className="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-slate-100 safe-top">
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">

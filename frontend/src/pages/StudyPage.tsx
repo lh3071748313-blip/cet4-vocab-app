@@ -11,6 +11,7 @@ import {
   Shuffle,
   Sparkles,
   Volume2,
+  VolumeX,
   XCircle,
   Zap,
 } from 'lucide-react';
@@ -43,6 +44,9 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
   );
   const [revealed, setRevealed] = useState(false);
   const [immersive, setImmersive] = useState(false);
+  const [autoSpeak, setAutoSpeak] = useState<boolean>(
+    () => localStorage.getItem('cet4_auto_speak') !== 'false'
+  );
   const [pendingAction, setPendingAction] = useState<'known' | 'fuzzy' | 'forgot' | null>(null);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [spellInput, setSpellInput] = useState('');
@@ -81,10 +85,21 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
   const currentWord = queue[index];
 
   useEffect(() => {
-    if (currentWord && mode !== 'spell') {
+    if (currentWord && mode !== 'spell' && autoSpeak && !immersive) {
       speakEnglish(currentWord.word);
     }
-  }, [currentWord?.id, mode]);
+  }, [currentWord?.id, mode, autoSpeak, immersive]);
+
+  const toggleAutoSpeak = () => {
+    setAutoSpeak((prev) => {
+      const next = !prev;
+      localStorage.setItem('cet4_auto_speak', String(next));
+      if (!next && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      return next;
+    });
+  };
 
   const handleToggleOrder = (next: OrderType) => {
     if (next === order) return;
@@ -269,15 +284,30 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
               <span className="text-slate-500">含 {dueCount} 复习</span>
             )}
           </div>
-          <span className="text-slate-500">今日已学 {studiedToday} 词</span>
-          <button
-            type="button"
-            onClick={() => setImmersive(true)}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-900 text-white text-[11px] font-medium hover:bg-indigo-600 active:scale-95 transition"
-          >
-            <Maximize2 className="w-3 h-3" />
-            沉浸刷词
-          </button>
+          <div className="flex items-center gap-1.5">
+            <span className="text-slate-500 mr-1">今日 {studiedToday} 词</span>
+            <button
+              type="button"
+              onClick={toggleAutoSpeak}
+              className={`p-1.5 rounded-full transition ${
+                autoSpeak
+                  ? 'bg-indigo-50 text-indigo-600'
+                  : 'bg-slate-100 text-slate-400'
+              }`}
+              title={autoSpeak ? '关闭自动朗读' : '开启自动朗读'}
+              aria-label={autoSpeak ? '关闭自动朗读' : '开启自动朗读'}
+            >
+              {autoSpeak ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => setImmersive(true)}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-900 text-white text-[11px] font-medium hover:bg-indigo-600 active:scale-95 transition"
+            >
+              <Maximize2 className="w-3 h-3" />
+              沉浸刷词
+            </button>
+          </div>
         </div>
 
         <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
@@ -640,6 +670,8 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
           index={index}
           order={order}
           scope={scope}
+          autoSpeak={autoSpeak}
+          onToggleAutoSpeak={toggleAutoSpeak}
           onToggleOrder={() => handleToggleOrder(order === 'sequential' ? 'random' : 'sequential')}
           onToggleScope={() => handleToggleScope(scope === 'all' ? 'core' : 'all')}
           onCommit={commitAndNext}
