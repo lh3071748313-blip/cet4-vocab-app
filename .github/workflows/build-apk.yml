@@ -32,7 +32,6 @@ jobs:
             npx cap add android
           fi
           npx cap sync android
-          sed -i 's/<application/<application android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml || true
 
       - name: Build Debug APK
         working-directory: frontend/android
