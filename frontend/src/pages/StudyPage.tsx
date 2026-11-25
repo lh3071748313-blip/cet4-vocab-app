@@ -179,6 +179,12 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
     touchStartRef.current = null;
     setIsDragging(false);
     if (dragX <= -70) {
+      if (mode === 'card' && !revealed) {
+        setDragX(0);
+        setPendingAction('known');
+        setRevealed(true);
+        return;
+      }
       setIsLeaving(true);
       setDragX(-360);
       setTimeout(() => {
@@ -187,6 +193,12 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
         commitAndNext(pendingAction || 'known');
       }, 150);
     } else if (dragX >= 70) {
+      if (mode === 'card' && !revealed) {
+        setDragX(0);
+        setPendingAction('forgot');
+        setRevealed(true);
+        return;
+      }
       setIsLeaving(true);
       setDragX(360);
       setTimeout(() => {
@@ -353,12 +365,12 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
       >
         {dragX <= -24 && (
           <div className="absolute top-4 right-4 z-10 px-3 py-1 rounded-full bg-emerald-500 text-white text-xs font-bold shadow">
-            认识 · 下一词 →
+            {mode === 'card' && !revealed ? '认识 · 看释义 →' : '确认 · 下一词 →'}
           </div>
         )}
         {dragX >= 24 && (
           <div className="absolute top-4 left-4 z-10 px-3 py-1 rounded-full bg-rose-500 text-white text-xs font-bold shadow">
-            ← 不熟 · 加错题
+            {mode === 'card' && !revealed ? '← 不熟 · 看释义' : '← 记错了 · 加错题'}
           </div>
         )}
         <div className="flex items-start justify-between">
@@ -606,7 +618,9 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
         </div>
       )}
       <p className="text-center text-[11px] text-slate-400">
-        提示：左滑卡片认识并下一词 · 右滑标记不熟
+        {mode === 'card' && !revealed
+          ? '提示：左滑认识看释义 · 右滑不熟看释义'
+          : '提示：左滑确认下一词 · 右滑记错加错题'}
       </p>
     </div>
   );
