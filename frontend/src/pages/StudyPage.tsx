@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   CheckCircle2,
   Eye,
@@ -44,6 +44,9 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
   const [spellInput, setSpellInput] = useState('');
   const [spellChecked, setSpellChecked] = useState<'correct' | 'wrong' | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [dragX, setDragX] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
   const loadQueue = useCallback(
     async (customOrder = order, customScope = scope, customMode = mode) => {
@@ -151,6 +154,37 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
     setSpellChecked(isCorrect ? 'correct' : 'wrong');
     setRevealed(true);
     speakEnglish(currentWord.word);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0];
+    touchStartRef.current = { x: t.clientX, y: t.clientY };
+    setIsDragging(true);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!touchStartRef.current) return;
+    const t = e.touches[0];
+    const dx = t.clientX - touchStartRef.current.x;
+    const dy = t.clientY - touchStartRef.current.y;
+    if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
+      setDragX(dx);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStartRef.current) return;
+    touchStartRef.current = null;
+    setIsDragging(false);
+    if (dragX <= -70) {
+      setDragX(0);
+      handleAction('known');
+    } else if (dragX >= 70) {
+      setDragX(0);
+      handleAction('forgot');
+    } else {
+      setDragX(0);
+    }
   };
 
   if (loading && queue.length === 0) {
@@ -297,7 +331,28 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
         </div>
       )}
 
-      <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 space-y-5">
+      <div
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        style={{
+          transform: `translateX(${dragX}px) rotate(${dragX * 0.03}deg)`,
+          opacity: Math.max(0.55, 1 - Math.abs(dragX) / 280),
+        }}
+        className={`relative bg-white rounded-3xl p-6 shadow-sm border border-slate-100 space-y-5 touch-pan-y select-none ${
+          isDragging ? '' : 'transition-all duration-200'
+        }`}
+      >
+        {dragX <= -24 && (
+          <div className="absolute top-4 right-4 z-10 px-3 py-1 rounded-full bg-emerald-500 text-white text-xs font-bold shadow">
+            认识 · 下一词 →
+          </div>
+        )}
+        {dragX >= 24 && (
+          <div className="absolute top-4 left-4 z-10 px-3 py-1 rounded-full bg-rose-500 text-white text-xs font-bold shadow">
+            ← 不熟 · 加错题
+          </div>
+        )}
         <div className="flex items-start justify-between">
           <div>
             <div className="flex items-center gap-2 mb-1">
@@ -525,6 +580,9 @@ export const StudyPage: React.FC<Props> = ({ dailyGoal, onMutated }) => {
           </button>
         </div>
       )}
+      <p className="text-center text-[11px] text-slate-400">
+        提示：左滑卡片认识并下一词 · 右滑标记不熟
+      </p>
     </div>
   );
 };
